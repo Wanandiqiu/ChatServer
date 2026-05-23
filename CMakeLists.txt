@@ -1,20 +1,29 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(chat)
 
 # 配置编译选项
-set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -g)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 
-# 配置最终的可执行文件输出的路径
+# 配置最终的可执行文件输出路径
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 
-# 配置头文件的搜索路径
-include_directories(${PROJECT_SOURCE_DIR}/include)
-include_directories(${PROJECT_SOURCE_DIR}/include/server)
-include_directories(${PROJECT_SOURCE_DIR}/include/server/db)
-include_directories(${PROJECT_SOURCE_DIR}/include/server/model)
-include_directories(${PROJECT_SOURCE_DIR}/include/server/redis)
-include_directories(${PROJECT_SOURCE_DIR}/thirdparty)
-link_directories(/usr/lib64/mysql)
+# 解决 macOS 新版 CMake 的 CMP0167 警告
+cmake_policy(SET CMP0167 OLD)
 
-# 加载子目录
-add_subdirectory(src)
+# 指定 Boost 路径（macOS Homebrew Apple Silicon）
+set(CMAKE_PREFIX_PATH "/opt/homebrew")
+
+find_package(Boost REQUIRED COMPONENTS thread)
+
+if(Boost_FOUND)
+    message(STATUS "Found Boost: ${Boost_VERSION_STRING}")
+
+    add_executable(chat src/main.cpp)
+
+    target_include_directories(chat PRIVATE ${Boost_INCLUDE_DIRS})
+
+    target_link_libraries(chat PRIVATE ${Boost_LIBRARIES})
+
+else()
+    message(FATAL_ERROR "Boost not found")
+endif()
