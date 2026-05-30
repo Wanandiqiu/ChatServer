@@ -12,7 +12,8 @@ namespace {
 
 bool allowsAnonymous(chat::MsgType msgid) {
     return msgid == chat::REG_MSG || msgid == chat::LOGIN_MSG ||
-           msgid == chat::RESET_PASSWORD_MSG || msgid == chat::SWITCH_ACCOUNT_MSG;
+           msgid == chat::RESET_PASSWORD_MSG || msgid == chat::SWITCH_ACCOUNT_MSG ||
+           msgid == chat::HEARTBEAT_MSG;
 }
 
 void sendNotLoggedIn(const std::shared_ptr<Session>& session, chat::MsgType req) {
@@ -295,6 +296,10 @@ ChatService::ChatService() {
     msg_handler_map_.emplace(static_cast<int>(chat::MARK_CONVERSATION_READ_MSG),
         [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
             markConversationRead(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::HEARTBEAT_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            heartbeat(session, envelope);
         });
 }
 
@@ -1337,6 +1342,22 @@ void ChatService::pushGroupChatNotify(const std::shared_ptr<Session>& session,
     chat::ChatEnvelope out;
     out.set_msgid(chat::GROUP_CHAT_MSG);
     out.set_payload(notify.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::heartbeat(const std::shared_ptr<Session>& session,
+                            const chat::ChatEnvelope& envelope) {
+    (void)envelope;
+
+    chat::HeartbeatRsp rsp;
+    rsp.set_errcode(errc::kOk);
+    rsp.set_errmsg("ok");
+    rsp.set_recommended_interval_sec(Session::kRecommendedHeartbeatSec);
+    rsp.set_server_idle_timeout_sec(Session::kIdleTimeoutSec);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::HEARTBEAT_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
     sendEnvelope(session, out);
 }
 

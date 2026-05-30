@@ -1,9 +1,10 @@
-// v0.4.3 交互式 CLI：收件箱 + 单聊历史 + 群聊
+// v0.4.4 交互式 CLI：自动心跳 + 收件箱 + 单聊历史 + 群聊
 // 用法: ./bin/chat_cli [host] [port]
 
 #include "NetUtil.hpp"
 #include "chat.pb.h"
 
+#include <chrono>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -55,6 +56,37 @@ void readLine(const std::string& prompt, std::string& out) {
     std::getline(std::cin, out);
 }
 
+constexpr int kClientHeartbeatSec = 25;
+
+bool sendHeartbeat(int fd) {
+    chat::HeartbeatReq req;
+    chat::ChatEnvelope env;
+    env.set_msgid(chat::HEARTBEAT_MSG);
+    env.set_payload(req.SerializeAsString());
+
+    chat::ChatEnvelope rsp_env;
+    if (!exchange(fd, env, rsp_env)) {
+        return false;
+    }
+
+    chat::HeartbeatRsp rsp;
+    if (!rsp.ParseFromString(rsp_env.payload())) {
+        return false;
+    }
+    return rsp.errcode() == 0;
+}
+
+void maybeHeartbeat(int fd, std::chrono::steady_clock::time_point& last_ping) {
+    const auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_ping).count() <
+        kClientHeartbeatSec) {
+        return;
+    }
+    if (sendHeartbeat(fd)) {
+        last_ping = now;
+    }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -72,9 +104,11 @@ int main(int argc, char* argv[]) {
     }
 
     int logged_in_uid = 0;
+    auto last_heartbeat = std::chrono::steady_clock::now();
 
     for (;;) {
         netutil::drainNotifications(fd);
+        maybeHeartbeat(fd, last_heartbeat);
 
         std::cout << "\n1) register  2) login  3) logout  4) quit\n"
                   << "5) add friend  6) send chat\n"

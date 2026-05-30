@@ -3,7 +3,7 @@
 
 // v0.1.0 — 按 MsgType 分发 ChatEnvelope
 // v0.2.0 — 账号体系
-// v0.3.x 账号/好友/单聊；v0.4.1 单聊历史；v0.4.2 群聊；v0.4.3 收件箱
+// v0.3.x 账号/好友/单聊；v0.4.1 单聊历史；v0.4.2 群聊；v0.4.3 收件箱；v0.4.4 心跳
 
 #include <functional>
 #include <memory>
@@ -61,6 +61,7 @@ private:
 
     void listConversations(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
     void markConversationRead(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
+    void heartbeat(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
 
     void notImplemented(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
 

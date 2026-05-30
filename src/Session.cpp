@@ -8,9 +8,13 @@
 #include <iostream>
 #include <utility>
 
-Session::Session(tcp::socket socket) : socket_(std::move(socket)) {}
+Session::Session(tcp::socket socket)
+    : socket_(std::move(socket)),
+      idle_timer_(socket_.get_executor()),
+      idle_timeout_(std::chrono::seconds(kIdleTimeoutSec)) {}
 
 void Session::start() {
+    touchActivity();
     doRead();
 }
 
@@ -85,8 +89,27 @@ void Session::doWrite() {
         });
 }
 
+void Session::touchActivity() {
+    idle_timer_.cancel();
+    scheduleIdleCheck();
+}
+
+void Session::scheduleIdleCheck() {
+    auto self = shared_from_this();
+    idle_timer_.expires_after(idle_timeout_);
+    idle_timer_.async_wait([this, self](boost::system::error_code ec) {
+        if (ec == boost::asio::error::operation_aborted) {
+            return;
+        }
+        std::cout << "session idle timeout, closing connection\n";
+        ChatService::instance().onDisconnect(self);
+        close();
+    });
+}
+
 // 收到完整帧后交给 ChatService::onMessage
 void Session::onFrame(const std::string& frame_body) {
+    touchActivity();
     ChatService::instance().onMessage(shared_from_this(), frame_body);
 }
 

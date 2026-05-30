@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// 应用层协议（v0.4.3 收件箱 + v0.4.2 群聊 + v0.4.1 单聊历史）
+// 应用层协议（v0.4.4 心跳 + v0.4.3 收件箱 + v0.4.2 群聊）
 // 收件箱：会话列表 / 标已读
 
 package chat;
@@ -41,6 +41,8 @@ enum MsgType {
   LIST_CONVERSATIONS_MSG_ACK = 32;
   MARK_CONVERSATION_READ_MSG = 33;
   MARK_CONVERSATION_READ_MSG_ACK = 34;
+  HEARTBEAT_MSG = 35;
+  HEARTBEAT_MSG_ACK = 36;
 }
 
 enum SessionType {
@@ -308,6 +310,15 @@ message MarkConversationReadReq {
 message MarkConversationReadRsp {
   int32 errcode = 1;
   string errmsg = 2;
+}
+
+message HeartbeatReq {}
+
+message HeartbeatRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int32 recommended_interval_sec = 3;
+  int32 server_idle_timeout_sec = 4;
 }
 
 message CommonRsp {

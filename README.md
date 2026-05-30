@@ -2,7 +2,7 @@
 
 学习型 IM 后端：TCP 长度前缀帧 + `ChatEnvelope` + SQLite 账号体系。
 
-**版本与功能清单：** [docs/VERSIONS.md](docs/VERSIONS.md)（当前 **v0.4.3**）
+**版本与功能清单：** [docs/VERSIONS.md](docs/VERSIONS.md)（当前 **v0.4.4**）
 
 ## 依赖（macOS Homebrew）
 
