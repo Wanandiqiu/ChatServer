@@ -1,4 +1,4 @@
-// v0.4.1 交互式 CLI：含单聊历史拉取（菜单 9）
+// v0.4.2 交互式 CLI：单聊历史 + 群聊
 // 用法: ./bin/chat_cli [host] [port]
 
 #include "NetUtil.hpp"
@@ -79,7 +79,10 @@ int main(int argc, char* argv[]) {
         std::cout << "\n1) register  2) login  3) logout  4) quit\n"
                   << "5) add friend  6) send chat\n"
                   << "7) reset password  8) switch account\n"
-                  << "9) fetch history\n> ";
+                  << "9) fetch history\n"
+                  << "10) create group  11) join group  12) group chat\n"
+                  << "13) my groups  14) group history  15) leave group\n"
+                  << "16) list join requests  17) review join request\n> ";
         int choice = 0;
         if (!(std::cin >> choice)) {
             break;
@@ -393,6 +396,335 @@ int main(int argc, char* argv[]) {
                 std::cout << "  [" << entry.msg_id() << "] from=" << entry.from_uid()
                           << " to=" << entry.to_uid() << " \"" << entry.content() << "\"\n";
             }
+            continue;
+        }
+
+        if (choice == 10) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login or register first\n";
+                continue;
+            }
+            std::string name;
+            std::string desc;
+            std::string mode_str;
+            readLine("group name: ", name);
+            readLine("description: ", desc);
+            readLine("join mode (1=public 2=approval): ", mode_str);
+
+            chat::CreateGroupReq req;
+            req.set_name(name);
+            req.set_description(desc);
+            if (mode_str == "2") {
+                req.set_join_mode(chat::JOIN_APPROVAL_REQUIRED);
+            } else {
+                req.set_join_mode(chat::JOIN_PUBLIC);
+            }
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::CREATE_GROUP_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::CreateGroupRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse CreateGroupRsp failed\n";
+                continue;
+            }
+            std::cout << "CreateGroupRsp errcode=" << rsp.errcode()
+                      << " group_id=" << rsp.group_id() << " errmsg=" << rsp.errmsg() << '\n';
+            continue;
+        }
+
+        if (choice == 11) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            readLine("group_id: ", gid_str);
+            int group_id = 0;
+            try {
+                group_id = std::stoi(gid_str);
+            } catch (...) {
+                std::cout << "invalid group_id\n";
+                continue;
+            }
+
+            chat::JoinGroupReq req;
+            req.set_group_id(group_id);
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::ADD_GROUP_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::JoinGroupRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse JoinGroupRsp failed\n";
+                continue;
+            }
+            std::cout << "JoinGroupRsp errcode=" << rsp.errcode() << " joined=" << rsp.joined()
+                      << " pending=" << rsp.pending() << " errmsg=" << rsp.errmsg() << '\n';
+            continue;
+        }
+
+        if (choice == 12) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            std::string content;
+            readLine("group_id: ", gid_str);
+            readLine("message: ", content);
+            int group_id = 0;
+            try {
+                group_id = std::stoi(gid_str);
+            } catch (...) {
+                std::cout << "invalid group_id\n";
+                continue;
+            }
+
+            chat::GroupChatReq req;
+            req.set_group_id(group_id);
+            req.set_content(content);
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::GROUP_CHAT_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::GroupChatRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse GroupChatRsp failed\n";
+                continue;
+            }
+            std::cout << "GroupChatRsp errcode=" << rsp.errcode() << " msg_id=" << rsp.msg_id()
+                      << " errmsg=" << rsp.errmsg() << '\n';
+            netutil::drainNotifications(fd);
+            continue;
+        }
+
+        if (choice == 13) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+
+            chat::ListMyGroupsReq req;
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::LIST_MY_GROUPS_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::ListMyGroupsRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse ListMyGroupsRsp failed\n";
+                continue;
+            }
+            std::cout << "ListMyGroupsRsp errcode=" << rsp.errcode()
+                      << " count=" << rsp.groups_size() << '\n';
+            for (const auto& g : rsp.groups()) {
+                std::cout << "  id=" << g.group_id() << " name=" << g.name()
+                          << " owner=" << g.is_owner() << " mode=" << g.join_mode() << '\n';
+            }
+            continue;
+        }
+
+        if (choice == 14) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            std::string limit_str;
+            std::string before_str;
+            readLine("group_id: ", gid_str);
+            readLine("limit (empty=20): ", limit_str);
+            readLine("before_msg_id (empty=latest): ", before_str);
+
+            int group_id = 0;
+            try {
+                group_id = std::stoi(gid_str);
+            } catch (...) {
+                std::cout << "invalid group_id\n";
+                continue;
+            }
+
+            chat::FetchGroupHistoryReq req;
+            req.set_group_id(group_id);
+            try {
+                if (!limit_str.empty()) {
+                    req.set_limit(std::stoi(limit_str));
+                }
+                if (!before_str.empty()) {
+                    req.set_before_msg_id(std::stoll(before_str));
+                }
+            } catch (...) {
+                std::cout << "invalid limit or before_msg_id\n";
+                continue;
+            }
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::FETCH_GROUP_HISTORY_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::FetchGroupHistoryRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse FetchGroupHistoryRsp failed\n";
+                continue;
+            }
+            std::cout << "FetchGroupHistoryRsp errcode=" << rsp.errcode()
+                      << " count=" << rsp.messages_size() << '\n';
+            for (const auto& entry : rsp.messages()) {
+                std::cout << "  [" << entry.msg_id() << "] from=" << entry.from_uid()
+                          << " \"" << entry.content() << "\"\n";
+            }
+            continue;
+        }
+
+        if (choice == 15) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            readLine("group_id: ", gid_str);
+            int group_id = 0;
+            try {
+                group_id = std::stoi(gid_str);
+            } catch (...) {
+                std::cout << "invalid group_id\n";
+                continue;
+            }
+
+            chat::LeaveGroupReq req;
+            req.set_group_id(group_id);
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::LEAVE_GROUP_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::LeaveGroupRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse LeaveGroupRsp failed\n";
+                continue;
+            }
+            std::cout << "LeaveGroupRsp errcode=" << rsp.errcode() << " errmsg=" << rsp.errmsg()
+                      << '\n';
+            continue;
+        }
+
+        if (choice == 16) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            readLine("group_id: ", gid_str);
+            int group_id = 0;
+            try {
+                group_id = std::stoi(gid_str);
+            } catch (...) {
+                std::cout << "invalid group_id\n";
+                continue;
+            }
+
+            chat::ListJoinRequestsReq req;
+            req.set_group_id(group_id);
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::LIST_JOIN_REQUESTS_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::ListJoinRequestsRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse ListJoinRequestsRsp failed\n";
+                continue;
+            }
+            std::cout << "ListJoinRequestsRsp errcode=" << rsp.errcode()
+                      << " count=" << rsp.requests_size() << '\n';
+            for (const auto& r : rsp.requests()) {
+                std::cout << "  request_id=" << r.request_id()
+                          << " applicant_uid=" << r.applicant_uid() << '\n';
+            }
+            continue;
+        }
+
+        if (choice == 17) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string gid_str;
+            std::string applicant_str;
+            std::string approve_str;
+            readLine("group_id: ", gid_str);
+            readLine("applicant_uid: ", applicant_str);
+            readLine("approve? (1=yes 0=no): ", approve_str);
+
+            int group_id = 0;
+            int applicant_uid = 0;
+            try {
+                group_id = std::stoi(gid_str);
+                applicant_uid = std::stoi(applicant_str);
+            } catch (...) {
+                std::cout << "invalid ids\n";
+                continue;
+            }
+
+            chat::ReviewJoinRequestReq req;
+            req.set_group_id(group_id);
+            req.set_applicant_uid(applicant_uid);
+            req.set_approve(approve_str == "1");
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::REVIEW_JOIN_REQUEST_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::ReviewJoinRequestRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse ReviewJoinRequestRsp failed\n";
+                continue;
+            }
+            std::cout << "ReviewJoinRequestRsp errcode=" << rsp.errcode()
+                      << " errmsg=" << rsp.errmsg() << '\n';
             continue;
         }
 

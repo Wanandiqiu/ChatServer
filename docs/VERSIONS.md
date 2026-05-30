@@ -2,13 +2,68 @@
 
 本项目采用 **语义化版本**（`vMAJOR.MINOR.PATCH`）。`MAJOR` 在大协议或架构不兼容变更时递增；学习阶段以 `0.x.y` 为主。
 
-**当前最新版本：v0.4.1**
+**当前最新版本：v0.4.2**
 
 详细需求与实现计划见：
 
 - `docs/brainstorms/2026-05-30-chatserver-boost-account-requirements.md`
 - `docs/plans/2026-05-30-001-feat-boost-account-milestone-plan.md`
 - `docs/plans/2026-05-30-002-feat-chat-history-fetch-plan.md`
+- `docs/brainstorms/2026-05-30-group-chat-messaging-requirements.md`
+- `docs/plans/2026-05-30-003-feat-group-chat-plan.md`
+
+---
+
+## v0.4.2 — 群聊（2026-05-30）
+
+路线图主题 **v0.4.0 群聊** 的实现发布；在 v0.4.1 单聊历史之后递增 patch。
+
+### 能力
+
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| 建群 | ✅ | 名称、简介；公开 / 需审批模式 |
+| 加群 | ✅ | 凭 `group_id` 直接加入或提交申请 |
+| 群主审批 | ✅ | `LIST_JOIN_REQUESTS` + `REVIEW_JOIN_REQUEST` |
+| 群消息 | ✅ | 实时 `GroupChatNotify`；离线 per-member 补发 |
+| 群历史 | ✅ | `FETCH_GROUP_HISTORY_MSG` 分页 |
+| 我的群列表 | ✅ | `LIST_MY_GROUPS_MSG` |
+| 退群 | ✅ | `LEAVE_GROUP_MSG` |
+| 上限 | ✅ | 单群 200 人；每人 50 群 |
+| CLI | ✅ | 菜单 10–17 |
+
+### 协议（新增 MsgType 19–30）
+
+| MsgType | 说明 |
+|---------|------|
+| `CREATE_GROUP_MSG` / `_ACK` (8/19) | 建群 |
+| `ADD_GROUP_MSG` / `_ACK` (9/20) | 加入/申请 |
+| `GROUP_CHAT_MSG` (10) | 发消息 / 应答 / 推送 |
+| `LIST_MY_GROUPS_MSG` / `_ACK` (21/22) | 我的群 |
+| `FETCH_GROUP_HISTORY_MSG` / `_ACK` (23/24) | 群历史 |
+| `LEAVE_GROUP_MSG` / `_ACK` (25/26) | 退群 |
+| `LIST_JOIN_REQUESTS_MSG` / `_ACK` (27/28) | 待审批列表 |
+| `REVIEW_JOIN_REQUEST_MSG` / `_ACK` (29/30) | 批准/拒绝 |
+
+### 错误码（新增 14–21）
+
+| 值 | 常量 | 含义 |
+|----|------|------|
+| 14 | `kGroupNotFound` | 群不存在 |
+| 15 | `kNotGroupMember` | 非成员 |
+| 16 | `kAlreadyInGroup` | 已在群内 |
+| 17 | `kGroupFull` | 群已满 |
+| 18 | `kUserGroupLimit` | 用户加群数达上限 |
+| 19 | `kJoinPending` | 已有待审申请 |
+| 20 | `kNotGroupOwner` | 非群主 |
+| 21 | `kJoinNotPending` | 无待审申请 |
+
+### 验收（双终端）
+
+1. A 菜单 10 建公开群 → 记下 `group_id` → B 菜单 11 加入 → 互发菜单 12，双方见 `[group]` 推送
+2. C 建需审批群（模式 2）→ D 菜单 11 申请 → C 菜单 16/17 批准 → D 可发群消息
+3. B 离线时 A 发群消息 → B 登录（菜单 2）后收到补发 → 菜单 14 拉历史
+4. 成员菜单 15 退群后菜单 12 返回 `errcode=15`
 
 ---
 
@@ -102,7 +157,7 @@
 |---------|------|
 | `ADD_FRIEND_MSG` / `ADD_FRIEND_MSG_ACK` | ✅ |
 | `ONE_CHAT_MSG` | ✅ 请求/应答/推送 |
-| 群组相关 | ⏳ 预留 v0.4.0 |
+| 群组相关 | ✅ 见 v0.4.2 |
 
 ### 错误码（新增）
 
@@ -162,7 +217,6 @@
 
 | 目标版本 | 主题 | 主要能力 |
 |----------|------|----------|
-| v0.4.0 | 群聊 | 建群、加群、群广播 |
 | v0.5.0+ | 离线增强 | 已读回执等 |
 | 后续 | Web 接入 | WebSocket 或 HTTP 网关 |
 

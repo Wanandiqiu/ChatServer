@@ -2,7 +2,7 @@
 
 学习型 IM 后端：TCP 长度前缀帧 + `ChatEnvelope` + SQLite 账号体系。
 
-**版本与功能清单：** [docs/VERSIONS.md](docs/VERSIONS.md)（当前 **v0.3.0**）
+**版本与功能清单：** [docs/VERSIONS.md](docs/VERSIONS.md)（当前 **v0.4.2**）
 
 ## 依赖（macOS Homebrew）
 
@@ -44,4 +44,4 @@ cmake --build .
 
 ## 版本规划
 
-详见 [docs/VERSIONS.md](docs/VERSIONS.md)。当前 **v0.3.0** 含账号 + 好友 + 单聊；**v0.4.0+** 计划群聊与 Web 接入。
+详见 [docs/VERSIONS.md](docs/VERSIONS.md)。当前 **v0.4.2** 含账号、好友、单聊、历史与群聊；后续计划 Web 接入。

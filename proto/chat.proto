@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-// 应用层协议（v0.4.1）
-// 单聊历史分页拉取 FETCH_HISTORY_MSG；此前 v0.3.x 账号/好友/单聊
+// 应用层协议（v0.4.2 群聊 + v0.4.1 单聊历史）
+// 群聊：建群/加群/群消息/群历史/列表/审批
 
 package chat;
 
@@ -25,6 +25,24 @@ enum MsgType {
   SWITCH_ACCOUNT_MSG_ACK = 16;
   FETCH_HISTORY_MSG = 17;
   FETCH_HISTORY_MSG_ACK = 18;
+  CREATE_GROUP_MSG_ACK = 19;
+  ADD_GROUP_MSG_ACK = 20;
+  LIST_MY_GROUPS_MSG = 21;
+  LIST_MY_GROUPS_MSG_ACK = 22;
+  FETCH_GROUP_HISTORY_MSG = 23;
+  FETCH_GROUP_HISTORY_MSG_ACK = 24;
+  LEAVE_GROUP_MSG = 25;
+  LEAVE_GROUP_MSG_ACK = 26;
+  LIST_JOIN_REQUESTS_MSG = 27;
+  LIST_JOIN_REQUESTS_MSG_ACK = 28;
+  REVIEW_JOIN_REQUEST_MSG = 29;
+  REVIEW_JOIN_REQUEST_MSG_ACK = 30;
+}
+
+enum JoinMode {
+  JOIN_MODE_UNSPECIFIED = 0;
+  JOIN_PUBLIC = 1;
+  JOIN_APPROVAL_REQUIRED = 2;
 }
 
 message ChatEnvelope {
@@ -33,7 +51,7 @@ message ChatEnvelope {
 }
 
 message LoginReq {
-  reserved 1;           // 旧 id 字段已废弃，请用 username
+  reserved 1;
   string password = 2;
   string username = 3;
 }
@@ -41,7 +59,7 @@ message LoginReq {
 message LoginRsp {
   int32 errcode = 1;
   string errmsg = 2;
-  int32 uid = 3;        // 登录成功后的用户 uid
+  int32 uid = 3;
   string name = 4;
 }
 
@@ -52,10 +70,10 @@ message RegReq {
 
 message RegRsp {
   int32 errcode = 1;
-  int32 uid = 2;        // 注册成功分配的唯一 uid
+  int32 uid = 2;
   string errmsg = 3;
-  string name = 4;        // 成功时用户名
-  bool logged_in = 5;     // 注册成功后是否已自动登录
+  string name = 4;
+  bool logged_in = 5;
 }
 
 message LogoutReq {}
@@ -121,8 +139,8 @@ message OneChatNotify {
 
 message FetchHistoryReq {
   int32 peer_uid = 1;
-  int32 limit = 2;           // <=0 时服务端用默认 20；最大 100
-  int64 before_msg_id = 3;   // 0 表示最新一页；否则 id 严格小于此值
+  int32 limit = 2;
+  int64 before_msg_id = 3;
 }
 
 message HistoryEntry {
@@ -137,6 +155,120 @@ message FetchHistoryRsp {
   int32 errcode = 1;
   string errmsg = 2;
   repeated HistoryEntry messages = 3;
+}
+
+message CreateGroupReq {
+  string name = 1;
+  string description = 2;
+  JoinMode join_mode = 3;
+}
+
+message CreateGroupRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int32 group_id = 3;
+}
+
+message JoinGroupReq {
+  int32 group_id = 1;
+}
+
+message JoinGroupRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  bool joined = 3;
+  bool pending = 4;
+}
+
+message GroupChatReq {
+  int32 group_id = 1;
+  string content = 2;
+}
+
+message GroupChatRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int64 msg_id = 3;
+}
+
+message GroupChatNotify {
+  int64 msg_id = 1;
+  int32 group_id = 2;
+  string group_name = 3;
+  int32 from_uid = 4;
+  string from_name = 5;
+  string content = 6;
+  int64 sent_at = 7;
+}
+
+message GroupSummary {
+  int32 group_id = 1;
+  string name = 2;
+  JoinMode join_mode = 3;
+  bool is_owner = 4;
+}
+
+message ListMyGroupsReq {}
+
+message ListMyGroupsRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  repeated GroupSummary groups = 3;
+}
+
+message FetchGroupHistoryReq {
+  int32 group_id = 1;
+  int32 limit = 2;
+  int64 before_msg_id = 3;
+}
+
+message GroupHistoryEntry {
+  int64 msg_id = 1;
+  int32 group_id = 2;
+  int32 from_uid = 3;
+  string content = 4;
+  int64 sent_at = 5;
+}
+
+message FetchGroupHistoryRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  repeated GroupHistoryEntry messages = 3;
+}
+
+message LeaveGroupReq {
+  int32 group_id = 1;
+}
+
+message LeaveGroupRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+}
+
+message JoinRequestEntry {
+  int32 applicant_uid = 1;
+  int64 request_id = 2;
+}
+
+message ListJoinRequestsReq {
+  int32 group_id = 1;
+}
+
+message ListJoinRequestsRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  repeated JoinRequestEntry requests = 3;
+}
+
+message ReviewJoinRequestReq {
+  int32 group_id = 1;
+  int32 applicant_uid = 2;
+  bool approve = 3;
+}
+
+message ReviewJoinRequestRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
 }
 
 message CommonRsp {

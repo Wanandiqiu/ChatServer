@@ -98,15 +98,28 @@ inline void drainNotifications(int fd) {
         if (!env.ParseFromString(body)) {
             continue;
         }
-        if (env.msgid() != chat::ONE_CHAT_MSG) {
+        if (env.msgid() == chat::ONE_CHAT_MSG) {
+            chat::OneChatNotify notify;
+            if (!notify.ParseFromString(env.payload())) {
+                continue;
+            }
+            if (notify.to_uid() != 0) {
+                std::cout << "[push] from=" << notify.from_name() << " (uid=" << notify.from_uid()
+                          << ") msg=\"" << notify.content() << "\" id=" << notify.msg_id() << '\n';
+            }
             continue;
         }
-        chat::OneChatNotify notify;
-        if (!notify.ParseFromString(env.payload())) {
-            continue;
+        if (env.msgid() == chat::GROUP_CHAT_MSG) {
+            chat::GroupChatNotify notify;
+            if (!notify.ParseFromString(env.payload())) {
+                continue;
+            }
+            if (notify.group_id() != 0) {
+                std::cout << "[group] " << notify.group_name() << " (id=" << notify.group_id()
+                          << ") from=" << notify.from_name() << " (uid=" << notify.from_uid()
+                          << ") msg=\"" << notify.content() << "\" id=" << notify.msg_id() << '\n';
+            }
         }
-        std::cout << "[push] from=" << notify.from_name() << " (uid=" << notify.from_uid()
-                  << ") msg=\"" << notify.content() << "\" id=" << notify.msg_id() << '\n';
     }
 }
 

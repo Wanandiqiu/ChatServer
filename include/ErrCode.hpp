@@ -21,6 +21,14 @@ constexpr int32_t kAlreadyFriend = 10;
 constexpr int32_t kCannotAddSelf = 11;
 constexpr int32_t kInvalidUid = 12;       // uid 不存在（未注册）
 constexpr int32_t kAlreadyLoggedIn = 13;  // 已登录会话不可再次注册
+constexpr int32_t kGroupNotFound = 14;
+constexpr int32_t kNotGroupMember = 15;
+constexpr int32_t kAlreadyInGroup = 16;
+constexpr int32_t kGroupFull = 17;
+constexpr int32_t kUserGroupLimit = 18;
+constexpr int32_t kJoinPending = 19;
+constexpr int32_t kNotGroupOwner = 20;
+constexpr int32_t kJoinNotPending = 21;
 
 }  // namespace errc
 

@@ -1,4 +1,4 @@
-// ChatService：账号（注册自动登录、重置密码、切换账号）+ 社交
+// ChatService：账号 + 好友单聊 + 群聊
 
 #include "ChatService.hpp"
 
@@ -57,6 +57,86 @@ void sendNotLoggedIn(const std::shared_ptr<Session>& session, chat::MsgType req)
             session->send(out);
             return;
         }
+        case chat::CREATE_GROUP_MSG: {
+            chat::CreateGroupRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::CREATE_GROUP_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::ADD_GROUP_MSG: {
+            chat::JoinGroupRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::ADD_GROUP_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::GROUP_CHAT_MSG: {
+            chat::GroupChatRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::GROUP_CHAT_MSG);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::LIST_MY_GROUPS_MSG: {
+            chat::ListMyGroupsRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::LIST_MY_GROUPS_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::FETCH_GROUP_HISTORY_MSG: {
+            chat::FetchGroupHistoryRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::LEAVE_GROUP_MSG: {
+            chat::LeaveGroupRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::LEAVE_GROUP_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::LIST_JOIN_REQUESTS_MSG: {
+            chat::ListJoinRequestsRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::LIST_JOIN_REQUESTS_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::REVIEW_JOIN_REQUEST_MSG: {
+            chat::ReviewJoinRequestRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::REVIEW_JOIN_REQUEST_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
         default: {
             chat::CommonRsp rsp;
             rsp.set_errcode(errc::kNotLoggedIn);
@@ -81,6 +161,18 @@ int clampHistoryLimit(int limit) {
         return kHistoryMaxLimit;
     }
     return limit;
+}
+
+StoreJoinMode toStoreJoinMode(chat::JoinMode mode) {
+    if (mode == chat::JOIN_APPROVAL_REQUIRED) {
+        return StoreJoinMode::ApprovalRequired;
+    }
+    return StoreJoinMode::Public;
+}
+
+chat::JoinMode toProtoJoinMode(StoreJoinMode mode) {
+    return mode == StoreJoinMode::ApprovalRequired ? chat::JOIN_APPROVAL_REQUIRED
+                                                   : chat::JOIN_PUBLIC;
 }
 
 }  // namespace
@@ -123,11 +215,44 @@ ChatService::ChatService() {
         [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
             fetchHistory(session, envelope);
         });
+    msg_handler_map_.emplace(static_cast<int>(chat::CREATE_GROUP_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            createGroup(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::ADD_GROUP_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            joinGroup(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::GROUP_CHAT_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            groupChat(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::LIST_MY_GROUPS_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            listMyGroups(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::FETCH_GROUP_HISTORY_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            fetchGroupHistory(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::LEAVE_GROUP_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            leaveGroup(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::LIST_JOIN_REQUESTS_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            listJoinRequests(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::REVIEW_JOIN_REQUEST_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            reviewJoinRequest(session, envelope);
+        });
 }
 
 bool ChatService::init(const std::string& db_path) {
     ready_ = user_store_.init(db_path) && friend_store_.init(db_path) &&
-             message_store_.init(db_path);
+             message_store_.init(db_path) && group_store_.init(db_path) &&
+             group_message_store_.init(db_path);
     return ready_;
 }
 
@@ -183,6 +308,7 @@ void ChatService::establishUserSession(const std::shared_ptr<Session>& session,
     session->setUid(user.uid);
     online_.bind(user.uid, session);
     deliverOfflineMessages(session, user.uid);
+    deliverOfflineGroupMessages(session, user.uid);
 }
 
 void ChatService::login(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
@@ -616,6 +742,379 @@ void ChatService::pushOneChatNotify(const std::shared_ptr<Session>& session,
 
     chat::ChatEnvelope out;
     out.set_msgid(chat::ONE_CHAT_MSG);
+    out.set_payload(notify.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::createGroup(const std::shared_ptr<Session>& session,
+                              const chat::ChatEnvelope& envelope) {
+    chat::CreateGroupRsp rsp;
+
+    chat::CreateGroupReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid CreateGroupReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::CREATE_GROUP_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    const auto op = group_store_.createGroup(
+        session->uid(), req.name(), req.description(), toStoreJoinMode(req.join_mode()));
+
+    rsp.set_errcode(op.errcode);
+    rsp.set_errmsg(op.errmsg);
+    rsp.set_group_id(op.group_id);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::CREATE_GROUP_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::joinGroup(const std::shared_ptr<Session>& session,
+                            const chat::ChatEnvelope& envelope) {
+    chat::JoinGroupRsp rsp;
+
+    chat::JoinGroupReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid JoinGroupReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::ADD_GROUP_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (req.group_id() <= 0) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("group_id required");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::ADD_GROUP_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    GroupOpResult op;
+    if (!group_store_.groupExists(req.group_id())) {
+        op.errcode = errc::kGroupNotFound;
+        op.errmsg = "group not found";
+    } else if (group_store_.getJoinMode(req.group_id()) == StoreJoinMode::Public) {
+        op = group_store_.joinPublic(session->uid(), req.group_id());
+    } else {
+        op = group_store_.requestJoin(session->uid(), req.group_id());
+    }
+
+    rsp.set_errcode(op.errcode);
+    rsp.set_errmsg(op.errmsg);
+    rsp.set_joined(op.joined);
+    rsp.set_pending(op.pending);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::ADD_GROUP_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::listMyGroups(const std::shared_ptr<Session>& session,
+                               const chat::ChatEnvelope& envelope) {
+    (void)envelope;
+
+    chat::ListMyGroupsRsp rsp;
+    const auto groups = group_store_.listMyGroups(session->uid());
+
+    rsp.set_errcode(errc::kOk);
+    rsp.set_errmsg("ok");
+    for (const auto& g : groups) {
+        auto* item = rsp.add_groups();
+        item->set_group_id(g.group_id);
+        item->set_name(g.name);
+        item->set_join_mode(toProtoJoinMode(g.join_mode));
+        item->set_is_owner(g.is_owner);
+    }
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::LIST_MY_GROUPS_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::leaveGroup(const std::shared_ptr<Session>& session,
+                             const chat::ChatEnvelope& envelope) {
+    chat::LeaveGroupRsp rsp;
+
+    chat::LeaveGroupReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid LeaveGroupReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::LEAVE_GROUP_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    const auto op = group_store_.leaveGroup(session->uid(), req.group_id());
+    rsp.set_errcode(op.errcode);
+    rsp.set_errmsg(op.errmsg);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::LEAVE_GROUP_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::listJoinRequests(const std::shared_ptr<Session>& session,
+                                   const chat::ChatEnvelope& envelope) {
+    chat::ListJoinRequestsRsp rsp;
+
+    chat::ListJoinRequestsReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid ListJoinRequestsReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::LIST_JOIN_REQUESTS_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (!group_store_.groupExists(req.group_id())) {
+        rsp.set_errcode(errc::kGroupNotFound);
+        rsp.set_errmsg("group not found");
+    } else if (!group_store_.isOwner(session->uid(), req.group_id())) {
+        rsp.set_errcode(errc::kNotGroupOwner);
+        rsp.set_errmsg("not group owner");
+    } else {
+        const auto rows = group_store_.listPendingRequests(req.group_id());
+        rsp.set_errcode(errc::kOk);
+        rsp.set_errmsg("ok");
+        for (const auto& row : rows) {
+            auto* entry = rsp.add_requests();
+            entry->set_request_id(row.request_id);
+            entry->set_applicant_uid(row.applicant_uid);
+        }
+    }
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::LIST_JOIN_REQUESTS_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::reviewJoinRequest(const std::shared_ptr<Session>& session,
+                                    const chat::ChatEnvelope& envelope) {
+    chat::ReviewJoinRequestRsp rsp;
+
+    chat::ReviewJoinRequestReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid ReviewJoinRequestReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::REVIEW_JOIN_REQUEST_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    GroupOpResult op;
+    if (req.approve()) {
+        op = group_store_.approveJoin(session->uid(), req.group_id(), req.applicant_uid());
+    } else {
+        op = group_store_.rejectJoin(session->uid(), req.group_id(), req.applicant_uid());
+    }
+
+    rsp.set_errcode(op.errcode);
+    rsp.set_errmsg(op.errmsg);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::REVIEW_JOIN_REQUEST_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::groupChat(const std::shared_ptr<Session>& session,
+                            const chat::ChatEnvelope& envelope) {
+    chat::GroupChatRsp rsp;
+
+    chat::GroupChatReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid GroupChatReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::GROUP_CHAT_MSG);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (req.group_id() <= 0 || req.content().empty()) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("group_id and content required");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::GROUP_CHAT_MSG);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (!group_store_.groupExists(req.group_id())) {
+        rsp.set_errcode(errc::kGroupNotFound);
+        rsp.set_errmsg("group not found");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::GROUP_CHAT_MSG);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (!group_store_.isMember(session->uid(), req.group_id())) {
+        rsp.set_errcode(errc::kNotGroupMember);
+        rsp.set_errmsg("not a group member");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::GROUP_CHAT_MSG);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    const auto saved =
+        group_message_store_.saveMessage(session->uid(), req.group_id(), req.content());
+    rsp.set_errcode(saved.errcode);
+    rsp.set_errmsg(saved.errmsg);
+    rsp.set_msg_id(saved.msg_id);
+
+    chat::ChatEnvelope ack;
+    ack.set_msgid(chat::GROUP_CHAT_MSG);
+    ack.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, ack);
+
+    if (saved.errcode != errc::kOk) {
+        return;
+    }
+
+    GroupMessage stored;
+    stored.id = saved.msg_id;
+    stored.group_id = req.group_id();
+    stored.from_uid = session->uid();
+    stored.content = req.content();
+    stored.sent_at = saved.sent_at;
+
+    const auto from_user = user_store_.findByUid(session->uid());
+    const std::string from_name = from_user ? from_user->name : "";
+    const std::string group_name = group_store_.getGroupName(req.group_id());
+
+    const auto members = group_store_.listMemberUids(req.group_id());
+    for (const int member_uid : members) {
+        if (member_uid == session->uid()) {
+            continue;
+        }
+
+        if (const auto peer = online_.find(member_uid)) {
+            pushGroupChatNotify(peer, stored, from_name, group_name);
+            group_message_store_.insertDelivery(stored.id, member_uid, 1);
+        } else {
+            group_message_store_.insertDelivery(stored.id, member_uid, 0);
+        }
+    }
+}
+
+void ChatService::fetchGroupHistory(const std::shared_ptr<Session>& session,
+                                    const chat::ChatEnvelope& envelope) {
+    chat::FetchGroupHistoryRsp rsp;
+
+    chat::FetchGroupHistoryReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid FetchGroupHistoryReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (req.group_id() <= 0) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("group_id required");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (!group_store_.groupExists(req.group_id())) {
+        rsp.set_errcode(errc::kGroupNotFound);
+        rsp.set_errmsg("group not found");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (!group_store_.isMember(session->uid(), req.group_id())) {
+        rsp.set_errcode(errc::kNotGroupMember);
+        rsp.set_errmsg("not a group member");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    const int limit = clampHistoryLimit(req.limit());
+    const auto messages = group_message_store_.fetchGroupHistory(
+        req.group_id(), limit, req.before_msg_id());
+
+    rsp.set_errcode(errc::kOk);
+    rsp.set_errmsg("ok");
+    for (const auto& msg : messages) {
+        auto* entry = rsp.add_messages();
+        entry->set_msg_id(msg.id);
+        entry->set_group_id(msg.group_id);
+        entry->set_from_uid(msg.from_uid);
+        entry->set_content(msg.content);
+        entry->set_sent_at(msg.sent_at);
+    }
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::FETCH_GROUP_HISTORY_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::deliverOfflineGroupMessages(const std::shared_ptr<Session>& session, int uid) {
+    const auto pending = group_message_store_.fetchUndeliveredForUser(uid);
+    for (const auto& msg : pending) {
+        const auto from_user = user_store_.findByUid(msg.from_uid);
+        const std::string from_name = from_user ? from_user->name : "";
+        const std::string group_name = group_store_.getGroupName(msg.group_id);
+        pushGroupChatNotify(session, msg, from_name, group_name);
+        group_message_store_.markDelivered(msg.id, uid);
+    }
+}
+
+void ChatService::pushGroupChatNotify(const std::shared_ptr<Session>& session,
+                                      const GroupMessage& msg,
+                                      const std::string& from_name,
+                                      const std::string& group_name) {
+    chat::GroupChatNotify notify;
+    notify.set_msg_id(msg.id);
+    notify.set_group_id(msg.group_id);
+    notify.set_group_name(group_name);
+    notify.set_from_uid(msg.from_uid);
+    notify.set_from_name(from_name);
+    notify.set_content(msg.content);
+    notify.set_sent_at(msg.sent_at);
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::GROUP_CHAT_MSG);
     out.set_payload(notify.SerializeAsString());
     sendEnvelope(session, out);
 }
