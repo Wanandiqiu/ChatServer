@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+// 应用层协议（v0.4.1）
+// 单聊历史分页拉取 FETCH_HISTORY_MSG；此前 v0.3.x 账号/好友/单聊
+
+package chat;
+
+enum MsgType {
+  MSG_TYPE_UNSPECIFIED = 0;
+  LOGIN_MSG = 1;
+  LOGIN_MSG_ACK = 2;
+  LOGINOUT_MSG = 3;
+  REG_MSG = 4;
+  REG_MSG_ACK = 5;
+  ONE_CHAT_MSG = 6;
+  ADD_FRIEND_MSG = 7;
+  CREATE_GROUP_MSG = 8;
+  ADD_GROUP_MSG = 9;
+  GROUP_CHAT_MSG = 10;
+  LOGINOUT_MSG_ACK = 11;
+  ADD_FRIEND_MSG_ACK = 12;
+  RESET_PASSWORD_MSG = 13;
+  RESET_PASSWORD_MSG_ACK = 14;
+  SWITCH_ACCOUNT_MSG = 15;
+  SWITCH_ACCOUNT_MSG_ACK = 16;
+  FETCH_HISTORY_MSG = 17;
+  FETCH_HISTORY_MSG_ACK = 18;
+}
+
+message ChatEnvelope {
+  MsgType msgid = 1;
+  bytes payload = 2;
+}
+
+message LoginReq {
+  reserved 1;           // 旧 id 字段已废弃，请用 username
+  string password = 2;
+  string username = 3;
+}
+
+message LoginRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int32 uid = 3;        // 登录成功后的用户 uid
+  string name = 4;
+}
+
+message RegReq {
+  string name = 1;
+  string password = 2;
+}
+
+message RegRsp {
+  int32 errcode = 1;
+  int32 uid = 2;        // 注册成功分配的唯一 uid
+  string errmsg = 3;
+  string name = 4;        // 成功时用户名
+  bool logged_in = 5;     // 注册成功后是否已自动登录
+}
+
+message LogoutReq {}
+
+message LogoutRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+}
+
+message ResetPasswordReq {
+  string username = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+
+message ResetPasswordRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+}
+
+message SwitchAccountReq {
+  string username = 1;
+  string password = 2;
+}
+
+message SwitchAccountRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int32 uid = 3;
+  string name = 4;
+}
+
+message AddFriendReq {
+  string friend_username = 1;
+}
+
+message AddFriendRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int32 friend_uid = 3;
+  string friend_name = 4;
+}
+
+message OneChatReq {
+  int32 to_uid = 1;
+  string content = 2;
+}
+
+message OneChatRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  int64 msg_id = 3;
+}
+
+message OneChatNotify {
+  int64 msg_id = 1;
+  int32 from_uid = 2;
+  string from_name = 3;
+  int32 to_uid = 4;
+  string content = 5;
+  int64 sent_at = 6;
+}
+
+message FetchHistoryReq {
+  int32 peer_uid = 1;
+  int32 limit = 2;           // <=0 时服务端用默认 20；最大 100
+  int64 before_msg_id = 3;   // 0 表示最新一页；否则 id 严格小于此值
+}
+
+message HistoryEntry {
+  int64 msg_id = 1;
+  int32 from_uid = 2;
+  int32 to_uid = 3;
+  string content = 4;
+  int64 sent_at = 5;
+}
+
+message FetchHistoryRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  repeated HistoryEntry messages = 3;
+}
+
+message CommonRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+}
