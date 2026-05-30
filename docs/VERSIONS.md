@@ -2,7 +2,7 @@
 
 本项目采用 **语义化版本**（`vMAJOR.MINOR.PATCH`）。`MAJOR` 在大协议或架构不兼容变更时递增；学习阶段以 `0.x.y` 为主。
 
-**当前最新版本：v0.4.2**
+**当前最新版本：v0.4.3**
 
 详细需求与实现计划见：
 
@@ -11,6 +11,48 @@
 - `docs/plans/2026-05-30-002-feat-chat-history-fetch-plan.md`
 - `docs/brainstorms/2026-05-30-group-chat-messaging-requirements.md`
 - `docs/plans/2026-05-30-003-feat-group-chat-plan.md`
+- `docs/brainstorms/2026-05-30-im-campus-beta-v1-requirements.md`
+- `docs/plans/2026-05-30-004-feat-conversation-list-unread-plan.md`
+
+---
+
+## v0.4.3 — 会话列表与未读（2026-05-30）
+
+校园内测路线 **M2**：统一收件箱（单聊 + 群聊混排），未读与 `delivered` 离线语义解耦。
+
+### 能力
+
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| 会话列表 | ✅ | `LIST_CONVERSATIONS_MSG`：按最近消息时间降序 |
+| 未读计数 | ✅ | 入站推送/离线补发时 `unread_count++`；标已读归零 |
+| 标已读 | ✅ | `MARK_CONVERSATION_READ_MSG`（进入会话即已读，内测简化） |
+| 列表范围 | ✅ | 仅展示有过消息的会话 |
+| 存储 | ✅ | `conversation_state` 表 |
+| CLI | ✅ | 菜单 18–19 |
+
+### 协议（新增 MsgType 31–34）
+
+| MsgType | 说明 |
+|---------|------|
+| `LIST_CONVERSATIONS_MSG` / `_ACK` (31/32) | 收件箱列表 |
+| `MARK_CONVERSATION_READ_MSG` / `_ACK` (33/34) | 标已读 |
+
+`SessionType`：`SESSION_PEER=1`，`SESSION_GROUP=2`。
+
+### 验收（双终端）
+
+1. A、B 互加好友 → A 菜单 6 发单聊 → B 菜单 18 见 PEER 会话 `unread=1` → 菜单 19 标已读 → 18 显示 `unread=0`
+2. 建群发 2 条群消息 → 成员菜单 18 见群会话 `unread=2` → 19 标已读后为 0
+3. 回归：菜单 6/12/9/14 单聊群聊历史仍正常
+
+### 校园内测进度
+
+| 里程碑 | 状态 |
+|--------|------|
+| M2 收件箱 | ✅ v0.4.3 |
+| M1 TLS/心跳 | 待办 |
+| M3 Web 客户端 | 待办 |
 
 ---
 

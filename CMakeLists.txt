@@ -56,6 +56,7 @@ set(CHAT_SERVER_SRCS
     src/store/MessageStore.cpp
     src/store/GroupStore.cpp
     src/store/GroupMessageStore.cpp
+    src/store/ConversationStore.cpp
     src/auth/PasswordHash.cpp
     ${PROTO_SRCS}
 )

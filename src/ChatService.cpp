@@ -137,6 +137,26 @@ void sendNotLoggedIn(const std::shared_ptr<Session>& session, chat::MsgType req)
             session->send(out);
             return;
         }
+        case chat::LIST_CONVERSATIONS_MSG: {
+            chat::ListConversationsRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::LIST_CONVERSATIONS_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
+        case chat::MARK_CONVERSATION_READ_MSG: {
+            chat::MarkConversationReadRsp rsp;
+            rsp.set_errcode(errc::kNotLoggedIn);
+            rsp.set_errmsg("login required");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            session->send(out);
+            return;
+        }
         default: {
             chat::CommonRsp rsp;
             rsp.set_errcode(errc::kNotLoggedIn);
@@ -173,6 +193,27 @@ StoreJoinMode toStoreJoinMode(chat::JoinMode mode) {
 chat::JoinMode toProtoJoinMode(StoreJoinMode mode) {
     return mode == StoreJoinMode::ApprovalRequired ? chat::JOIN_APPROVAL_REQUIRED
                                                    : chat::JOIN_PUBLIC;
+}
+
+constexpr std::size_t kPreviewMaxLen = 80;
+
+std::string truncatePreview(const std::string& content) {
+    if (content.size() <= kPreviewMaxLen) {
+        return content;
+    }
+    return content.substr(0, kPreviewMaxLen);
+}
+
+chat::SessionType toProtoSessionType(ConversationSessionType type) {
+    return type == ConversationSessionType::Group ? chat::SESSION_GROUP
+                                                  : chat::SESSION_PEER;
+}
+
+ConversationSessionType fromProtoSessionType(chat::SessionType type) {
+    if (type == chat::SESSION_GROUP) {
+        return ConversationSessionType::Group;
+    }
+    return ConversationSessionType::Peer;
 }
 
 }  // namespace
@@ -247,12 +288,20 @@ ChatService::ChatService() {
         [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
             reviewJoinRequest(session, envelope);
         });
+    msg_handler_map_.emplace(static_cast<int>(chat::LIST_CONVERSATIONS_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            listConversations(session, envelope);
+        });
+    msg_handler_map_.emplace(static_cast<int>(chat::MARK_CONVERSATION_READ_MSG),
+        [this](const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope) {
+            markConversationRead(session, envelope);
+        });
 }
 
 bool ChatService::init(const std::string& db_path) {
     ready_ = user_store_.init(db_path) && friend_store_.init(db_path) &&
              message_store_.init(db_path) && group_store_.init(db_path) &&
-             group_message_store_.init(db_path);
+             group_message_store_.init(db_path) && conversation_store_.init(db_path);
     return ready_;
 }
 
@@ -712,6 +761,9 @@ void ChatService::oneChat(const std::shared_ptr<Session>& session, const chat::C
 
     const auto from_user = user_store_.findByUid(session->uid());
     const std::string from_name = from_user ? from_user->name : "";
+    const std::string preview = truncatePreview(req.content());
+
+    touchOutgoingOneChat(session->uid(), req.to_uid(), preview, stored.id, stored.sent_at);
 
     if (const auto peer = online_.find(req.to_uid())) {
         pushOneChatNotify(peer, stored, from_name);
@@ -729,9 +781,58 @@ void ChatService::deliverOfflineMessages(const std::shared_ptr<Session>& session
     }
 }
 
+void ChatService::touchOutgoingOneChat(int sender_uid,
+                                      int peer_uid,
+                                      const std::string& preview,
+                                      int64_t msg_id,
+                                      int64_t sent_at) {
+    const auto peer_user = user_store_.findByUid(peer_uid);
+    const std::string title = peer_user ? peer_user->name : "";
+    conversation_store_.touchOutgoing(
+        sender_uid, ConversationSessionType::Peer, peer_uid, title, preview, msg_id, sent_at);
+}
+
+void ChatService::touchIncomingOneChat(int recipient_uid,
+                                       int peer_uid,
+                                       const std::string& peer_title,
+                                       const std::string& preview,
+                                       int64_t msg_id,
+                                       int64_t sent_at) {
+    conversation_store_.touchIncoming(
+        recipient_uid, ConversationSessionType::Peer, peer_uid, peer_title, preview, msg_id, sent_at);
+}
+
+void ChatService::touchOutgoingGroupChat(int sender_uid,
+                                         int group_id,
+                                         const std::string& preview,
+                                         int64_t msg_id,
+                                         int64_t sent_at) {
+    const std::string title = group_store_.getGroupName(group_id);
+    conversation_store_.touchOutgoing(
+        sender_uid, ConversationSessionType::Group, group_id, title, preview, msg_id, sent_at);
+}
+
+void ChatService::touchIncomingGroupChat(int recipient_uid,
+                                         int group_id,
+                                         const std::string& group_name,
+                                         const std::string& preview,
+                                         int64_t msg_id,
+                                         int64_t sent_at) {
+    conversation_store_.touchIncoming(recipient_uid,
+                                      ConversationSessionType::Group,
+                                      group_id,
+                                      group_name,
+                                      preview,
+                                      msg_id,
+                                      sent_at);
+}
+
 void ChatService::pushOneChatNotify(const std::shared_ptr<Session>& session,
                                     const ChatMessage& msg,
                                     const std::string& from_name) {
+    const std::string preview = truncatePreview(msg.content);
+    touchIncomingOneChat(session->uid(), msg.from_id, from_name, preview, msg.id, msg.sent_at);
+
     chat::OneChatNotify notify;
     notify.set_msg_id(msg.id);
     notify.set_from_uid(msg.from_id);
@@ -1007,6 +1108,9 @@ void ChatService::groupChat(const std::shared_ptr<Session>& session,
     const auto from_user = user_store_.findByUid(session->uid());
     const std::string from_name = from_user ? from_user->name : "";
     const std::string group_name = group_store_.getGroupName(req.group_id());
+    const std::string preview = truncatePreview(req.content());
+
+    touchOutgoingGroupChat(session->uid(), req.group_id(), preview, stored.id, stored.sent_at);
 
     const auto members = group_store_.listMemberUids(req.group_id());
     for (const int member_uid : members) {
@@ -1100,10 +1204,127 @@ void ChatService::deliverOfflineGroupMessages(const std::shared_ptr<Session>& se
     }
 }
 
+void ChatService::listConversations(const std::shared_ptr<Session>& session,
+                                    const chat::ChatEnvelope& envelope) {
+    (void)envelope;
+
+    chat::ListConversationsRsp rsp;
+    const auto rows = conversation_store_.listConversations(session->uid());
+
+    rsp.set_errcode(errc::kOk);
+    rsp.set_errmsg("ok");
+    for (const auto& row : rows) {
+        auto* entry = rsp.add_conversations();
+        entry->set_session_type(toProtoSessionType(row.session_type));
+        entry->set_target_id(row.target_id);
+        entry->set_title(row.title);
+        entry->set_last_msg_preview(row.last_preview);
+        entry->set_last_msg_at(row.last_msg_at);
+        entry->set_last_msg_id(row.last_msg_id);
+        entry->set_unread_count(row.unread_count);
+    }
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::LIST_CONVERSATIONS_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
+void ChatService::markConversationRead(const std::shared_ptr<Session>& session,
+                                       const chat::ChatEnvelope& envelope) {
+    chat::MarkConversationReadRsp rsp;
+
+    chat::MarkConversationReadReq req;
+    if (!req.ParseFromString(envelope.payload())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("invalid MarkConversationReadReq");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    if (req.target_id() <= 0 ||
+        (req.session_type() != chat::SESSION_PEER && req.session_type() != chat::SESSION_GROUP)) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("session_type and target_id required");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    const auto session_type = fromProtoSessionType(req.session_type());
+
+    if (session_type == ConversationSessionType::Peer) {
+        if (!user_store_.uidExists(req.target_id())) {
+            rsp.set_errcode(errc::kInvalidUid);
+            rsp.set_errmsg("peer uid not registered");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            sendEnvelope(session, out);
+            return;
+        }
+        if (!friend_store_.areFriends(session->uid(), req.target_id())) {
+            rsp.set_errcode(errc::kNotFriend);
+            rsp.set_errmsg("not friends");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            sendEnvelope(session, out);
+            return;
+        }
+    } else {
+        if (!group_store_.groupExists(req.target_id())) {
+            rsp.set_errcode(errc::kGroupNotFound);
+            rsp.set_errmsg("group not found");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            sendEnvelope(session, out);
+            return;
+        }
+        if (!group_store_.isMember(session->uid(), req.target_id())) {
+            rsp.set_errcode(errc::kNotGroupMember);
+            rsp.set_errmsg("not a group member");
+            chat::ChatEnvelope out;
+            out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+            out.set_payload(rsp.SerializeAsString());
+            sendEnvelope(session, out);
+            return;
+        }
+    }
+
+    if (!conversation_store_.markRead(
+            session->uid(), session_type, req.target_id(), req.read_through_msg_id())) {
+        rsp.set_errcode(errc::kInvalidRequest);
+        rsp.set_errmsg("conversation not found");
+        chat::ChatEnvelope out;
+        out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+        out.set_payload(rsp.SerializeAsString());
+        sendEnvelope(session, out);
+        return;
+    }
+
+    rsp.set_errcode(errc::kOk);
+    rsp.set_errmsg("ok");
+
+    chat::ChatEnvelope out;
+    out.set_msgid(chat::MARK_CONVERSATION_READ_MSG_ACK);
+    out.set_payload(rsp.SerializeAsString());
+    sendEnvelope(session, out);
+}
+
 void ChatService::pushGroupChatNotify(const std::shared_ptr<Session>& session,
                                       const GroupMessage& msg,
                                       const std::string& from_name,
                                       const std::string& group_name) {
+    const std::string preview = truncatePreview(msg.content);
+    touchIncomingGroupChat(session->uid(), msg.group_id, group_name, preview, msg.id, msg.sent_at);
+
     chat::GroupChatNotify notify;
     notify.set_msg_id(msg.id);
     notify.set_group_id(msg.group_id);

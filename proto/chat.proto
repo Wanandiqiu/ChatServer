@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-// 应用层协议（v0.4.2 群聊 + v0.4.1 单聊历史）
-// 群聊：建群/加群/群消息/群历史/列表/审批
+// 应用层协议（v0.4.3 收件箱 + v0.4.2 群聊 + v0.4.1 单聊历史）
+// 收件箱：会话列表 / 标已读
 
 package chat;
 
@@ -37,6 +37,16 @@ enum MsgType {
   LIST_JOIN_REQUESTS_MSG_ACK = 28;
   REVIEW_JOIN_REQUEST_MSG = 29;
   REVIEW_JOIN_REQUEST_MSG_ACK = 30;
+  LIST_CONVERSATIONS_MSG = 31;
+  LIST_CONVERSATIONS_MSG_ACK = 32;
+  MARK_CONVERSATION_READ_MSG = 33;
+  MARK_CONVERSATION_READ_MSG_ACK = 34;
+}
+
+enum SessionType {
+  SESSION_TYPE_UNSPECIFIED = 0;
+  SESSION_PEER = 1;
+  SESSION_GROUP = 2;
 }
 
 enum JoinMode {
@@ -267,6 +277,35 @@ message ReviewJoinRequestReq {
 }
 
 message ReviewJoinRequestRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+}
+
+message ConversationEntry {
+  SessionType session_type = 1;
+  int32 target_id = 2;
+  string title = 3;
+  string last_msg_preview = 4;
+  int64 last_msg_at = 5;
+  int64 last_msg_id = 6;
+  int32 unread_count = 7;
+}
+
+message ListConversationsReq {}
+
+message ListConversationsRsp {
+  int32 errcode = 1;
+  string errmsg = 2;
+  repeated ConversationEntry conversations = 3;
+}
+
+message MarkConversationReadReq {
+  SessionType session_type = 1;
+  int32 target_id = 2;
+  int64 read_through_msg_id = 3;
+}
+
+message MarkConversationReadRsp {
   int32 errcode = 1;
   string errmsg = 2;
 }

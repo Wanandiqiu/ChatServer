@@ -1,4 +1,4 @@
-// v0.4.2 交互式 CLI：单聊历史 + 群聊
+// v0.4.3 交互式 CLI：收件箱 + 单聊历史 + 群聊
 // 用法: ./bin/chat_cli [host] [port]
 
 #include "NetUtil.hpp"
@@ -82,7 +82,8 @@ int main(int argc, char* argv[]) {
                   << "9) fetch history\n"
                   << "10) create group  11) join group  12) group chat\n"
                   << "13) my groups  14) group history  15) leave group\n"
-                  << "16) list join requests  17) review join request\n> ";
+                  << "16) list join requests  17) review join request\n"
+                  << "18) list conversations  19) mark conversation read\n> ";
         int choice = 0;
         if (!(std::cin >> choice)) {
             break;
@@ -724,6 +725,87 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             std::cout << "ReviewJoinRequestRsp errcode=" << rsp.errcode()
+                      << " errmsg=" << rsp.errmsg() << '\n';
+            continue;
+        }
+
+        if (choice == 18) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+
+            chat::ListConversationsReq req;
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::LIST_CONVERSATIONS_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::ListConversationsRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse ListConversationsRsp failed\n";
+                continue;
+            }
+            std::cout << "ListConversationsRsp errcode=" << rsp.errcode()
+                      << " count=" << rsp.conversations_size() << '\n';
+            for (const auto& c : rsp.conversations()) {
+                std::cout << "  type=" << c.session_type() << " target=" << c.target_id()
+                          << " title=" << c.title() << " unread=" << c.unread_count()
+                          << " at=" << c.last_msg_at() << " preview=\"" << c.last_msg_preview()
+                          << "\"\n";
+            }
+            continue;
+        }
+
+        if (choice == 19) {
+            if (logged_in_uid == 0) {
+                std::cout << "please login first\n";
+                continue;
+            }
+            std::string type_str;
+            std::string target_str;
+            readLine("session_type (1=peer 2=group): ", type_str);
+            readLine("target_id (peer uid or group_id): ", target_str);
+
+            int target_id = 0;
+            try {
+                target_id = std::stoi(target_str);
+            } catch (...) {
+                std::cout << "invalid target_id\n";
+                continue;
+            }
+
+            chat::SessionType session_type = chat::SESSION_PEER;
+            if (type_str == "2") {
+                session_type = chat::SESSION_GROUP;
+            } else if (type_str != "1") {
+                std::cout << "invalid session_type\n";
+                continue;
+            }
+
+            chat::MarkConversationReadReq req;
+            req.set_session_type(session_type);
+            req.set_target_id(target_id);
+
+            chat::ChatEnvelope env;
+            env.set_msgid(chat::MARK_CONVERSATION_READ_MSG);
+            env.set_payload(req.SerializeAsString());
+
+            chat::ChatEnvelope rsp_env;
+            if (!exchange(fd, env, rsp_env)) {
+                break;
+            }
+
+            chat::MarkConversationReadRsp rsp;
+            if (!rsp.ParseFromString(rsp_env.payload())) {
+                std::cerr << "parse MarkConversationReadRsp failed\n";
+                continue;
+            }
+            std::cout << "MarkConversationReadRsp errcode=" << rsp.errcode()
                       << " errmsg=" << rsp.errmsg() << '\n';
             continue;
         }

@@ -3,7 +3,7 @@
 
 // v0.1.0 — 按 MsgType 分发 ChatEnvelope
 // v0.2.0 — 账号体系
-// v0.3.x 账号/好友/单聊；v0.4.1 单聊历史；v0.4.2 群聊
+// v0.3.x 账号/好友/单聊；v0.4.1 单聊历史；v0.4.2 群聊；v0.4.3 收件箱
 
 #include <functional>
 #include <memory>
@@ -12,6 +12,7 @@
 
 #include "OnlineRegistry.hpp"
 #include "chat.pb.h"
+#include "store/ConversationStore.hpp"
 #include "store/FriendStore.hpp"
 #include "store/GroupMessageStore.hpp"
 #include "store/GroupStore.hpp"
@@ -58,6 +59,9 @@ private:
     void listJoinRequests(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
     void reviewJoinRequest(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
 
+    void listConversations(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
+    void markConversationRead(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
+
     void notImplemented(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
 
     void deliverOfflineMessages(const std::shared_ptr<Session>& session, int uid);
@@ -72,6 +76,32 @@ private:
                              const std::string& from_name,
                              const std::string& group_name);
 
+    void touchOutgoingOneChat(int sender_uid,
+                              int peer_uid,
+                              const std::string& preview,
+                              int64_t msg_id,
+                              int64_t sent_at);
+
+    void touchIncomingOneChat(int recipient_uid,
+                            int peer_uid,
+                            const std::string& peer_title,
+                            const std::string& preview,
+                            int64_t msg_id,
+                            int64_t sent_at);
+
+    void touchOutgoingGroupChat(int sender_uid,
+                                int group_id,
+                                const std::string& preview,
+                                int64_t msg_id,
+                                int64_t sent_at);
+
+    void touchIncomingGroupChat(int recipient_uid,
+                                int group_id,
+                                const std::string& group_name,
+                                const std::string& preview,
+                                int64_t msg_id,
+                                int64_t sent_at);
+
     static void sendEnvelope(const std::shared_ptr<Session>& session, const chat::ChatEnvelope& envelope);
 
     void sendCommonError(const std::shared_ptr<Session>& session,
@@ -85,6 +115,7 @@ private:
     MessageStore message_store_;
     GroupStore group_store_;
     GroupMessageStore group_message_store_;
+    ConversationStore conversation_store_;
     OnlineRegistry online_;
     bool ready_{false};
 };
